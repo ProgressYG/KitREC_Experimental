@@ -1,0 +1,64 @@
+# KitREC Model Paths Configuration
+# HuggingFace Hub model/dataset paths
+
+# Base Model
+base_model:
+  name: "Qwen/Qwen3-14B"
+  revision: "main"
+
+# KitREC Fine-tuned Models (LoRA Adapters)
+# Status: Music models ready, Movies models training
+kitrec_models:
+  # DualFT Models (Overlapping + Cold-start users)
+  dualft_movies_seta: "Younggooo/kitrec-dualft-movies-seta-model"
+  dualft_movies_setb: "Younggooo/kitrec-dualft-movies-setb-model"
+  dualft_music_seta: "Younggooo/kitrec-dualft-music-seta-model"
+  dualft_music_setb: "Younggooo/kitrec-dualft-music-setb-model"
+
+  # SingleFT Models (Source-only users)
+  singleft_movies_seta: "Younggooo/kitrec-singleft-movies-seta-model"
+  singleft_movies_setb: "Younggooo/kitrec-singleft-movies-setb-model"
+  singleft_music_seta: "Younggooo/kitrec-singleft-music-seta-model"
+  singleft_music_setb: "Younggooo/kitrec-singleft-music-setb-model"
+
+# KitREC-Direct Models (Option A: separate training without <think>)
+# Note: These need to be trained separately from KitREC-Full
+kitrec_direct_models:
+  dualft_movies_seta: "Younggooo/kitrec-direct-dualft-movies-seta-model"
+  dualft_movies_setb: "Younggooo/kitrec-direct-dualft-movies-setb-model"
+  dualft_music_seta: "Younggooo/kitrec-direct-dualft-music-seta-model"
+  dualft_music_setb: "Younggooo/kitrec-direct-dualft-music-setb-model"
+  singleft_movies_seta: "Younggooo/kitrec-direct-singleft-movies-seta-model"
+  singleft_movies_setb: "Younggooo/kitrec-direct-singleft-movies-setb-model"
+  singleft_music_seta: "Younggooo/kitrec-direct-singleft-music-seta-model"
+  singleft_music_setb: "Younggooo/kitrec-direct-singleft-music-setb-model"
+
+# Test Datasets
+datasets:
+  test_seta: "Younggooo/kitrec-test-seta"
+  test_setb: "Younggooo/kitrec-test-setb"
+
+  # Training datasets (for reference)
+  train_dualft_movies_seta: "Younggooo/kitrec-dualft_movies-seta"
+  train_dualft_movies_setb: "Younggooo/kitrec-dualft_movies-setb"
+  train_dualft_music_seta: "Younggooo/kitrec-dualft_music-seta"
+  train_dualft_music_setb: "Younggooo/kitrec-dualft_music-setb"
+  train_singleft_movies_seta: "Younggooo/kitrec-singleft_movies-seta"
+  train_singleft_movies_setb: "Younggooo/kitrec-singleft_movies-setb"
+  train_singleft_music_seta: "Younggooo/kitrec-singleft_music-seta"
+  train_singleft_music_setb: "Younggooo/kitrec-singleft_music-setb"
+
+# User Types (for stratified analysis)
+user_types:
+  movies:
+    overlapping: "overlapping_books_movies"
+    source_only: "source_only_movies"
+    cold_start_2core: "cold_start_2core_movies"
+    cold_start_3core: "cold_start_3core_movies"
+    cold_start_4core: "cold_start_4core_movies"
+  music:
+    overlapping: "overlapping_books_music"
+    source_only: "source_only_music"
+    cold_start_2core: "cold_start_2core_music"
+    cold_start_3core: "cold_start_3core_music"
+    cold_start_4core: "cold_start_4core_music"

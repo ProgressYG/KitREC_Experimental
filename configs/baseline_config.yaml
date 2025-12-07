@@ -1,0 +1,113 @@
+# Baseline Models Configuration
+# CLAUDE.md: All baselines must use same Candidate Set (1 GT + 99 Neg)
+
+# CoNet (Collaborative Cross Networks)
+# Paper: Hu, G., Zhang, Y., & Yang, Q. (2018). ACM CIKM
+conet:
+  model:
+    hidden_dim: 256
+    num_layers: 3
+    embedding_dim: 128
+    cross_stitch_ratio: 0.5
+  training:
+    learning_rate: 0.001
+    batch_size: 256
+    epochs: 50
+    optimizer: "adam"
+    weight_decay: 0.0001
+    early_stopping_patience: 5
+  evaluation:
+    # Must use same candidate set as KitREC
+    candidate_size: 100  # 1 GT + 99 Neg
+    negative_sampling: "same_as_kitrec"  # Use pre-defined negatives
+  data:
+    # Convert KitREC text data to ID matrix
+    require_conversion: true
+    rating_threshold: 4.0  # 4-5 as positive
+
+# DTCDR (Dual-Target Cross-Domain Recommendation)
+# Paper: Zhu, F., et al. (2019). ACM CIKM
+dtcdr:
+  model:
+    embedding_dim: 128
+    mlp_layers: [256, 128]
+    domain_adaptation: true
+    shared_user_embedding: true
+  training:
+    learning_rate: 0.001
+    batch_size: 256
+    epochs: 50
+    optimizer: "adam"
+    weight_decay: 0.0001
+    multi_task_weight: 0.5  # Source vs Target loss balance
+  evaluation:
+    candidate_size: 100
+    negative_sampling: "same_as_kitrec"
+  data:
+    require_conversion: true
+    min_interactions: 5  # User/Item >= 5 interactions
+
+# LLM4CDR (LLM-based Cross-Domain Recommendation)
+# Paper: Liu, X., et al. (2025). ACM RecSys
+# WARNING: Original uses 3+20~30 candidates, KitREC uses 1+99
+# Must align candidate set for fair comparison
+llm4cdr:
+  model:
+    name: "Qwen/Qwen3-14B"  # Same base model as KitREC
+    use_quantization: true
+    quantization_bits: 4
+  pipeline:
+    stages:
+      - name: "domain_gap_analysis"
+        max_tokens: 512
+      - name: "user_interest_reasoning"
+        max_tokens: 1024
+      - name: "candidate_reranking"
+        max_tokens: 2048
+  evaluation:
+    # IMPORTANT: Align with KitREC candidate set
+    candidate_size: 100  # Changed from original 20~30
+    top_k: 10
+  prompts:
+    # Use templates from baselines/llm4cdr/prompts.py
+    use_chain_of_thought: true
+
+# Vanilla Zero-shot (NIR Paradigm)
+# Reference: Wang, L., & Lim, E. P. (2023)
+vanilla_zeroshot:
+  model:
+    name: "Qwen/Qwen3-14B"
+    use_quantization: true
+    quantization_bits: 4
+  evaluation:
+    candidate_size: 100  # Same as KitREC
+    top_k: 10
+  prompt:
+    # Simple direct generation without CoT
+    include_reasoning: false
+    output_format: "json"
+
+# Common Settings for All Baselines
+common:
+  # Ensure identical evaluation conditions
+  same_candidate_set: true
+  same_user_history: true
+  same_test_samples: true
+
+  # Data split should match KitREC test set
+  test_set: "kitrec-test-seta"  # or "kitrec-test-setb"
+
+  # Metrics to compare
+  metrics:
+    - hit@1
+    - hit@5
+    - hit@10
+    - mrr
+    - ndcg@5
+    - ndcg@10
+
+  # Statistical significance
+  statistical_testing:
+    enabled: true
+    method: "paired_t_test"
+    significance_levels: [0.05, 0.01, 0.001]

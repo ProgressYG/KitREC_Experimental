@@ -1,0 +1,63 @@
+# KitREC Evaluation Configuration
+# CLAUDE.md Critical Notes 참조
+
+evaluation:
+  batch_size: 8
+  max_new_tokens: 2048
+  temperature: 0.0  # Greedy decoding (deterministic)
+  max_input_length: 8192
+
+metrics:
+  ranking:
+    - hit@1
+    - hit@5
+    - hit@10
+    - mrr
+    - ndcg@5
+    - ndcg@10
+  explainability:
+    - mae
+    - rmse
+    - perplexity  # rationale only (CLAUDE.md)
+
+# Confidence Score Normalization (CLAUDE.md Critical)
+# Model output: 1-10 (NOT 0-10)
+# Ground Truth: 1-5 rating (NOT 0-5)
+# Normalization: confidence / 2
+confidence_normalization:
+  model_scale: 10      # Model output range: 1~10
+  model_min: 1         # Minimum confidence score
+  gt_scale: 5          # Ground Truth range: 1~5 (NOT 0~5)
+  gt_min: 1            # Minimum GT rating
+  divisor: 2           # confidence / 2 for comparison
+
+# Invalid item_id handling (outside candidate set)
+invalid_item_handling:
+  action: "fail"       # rank = infinity
+  log_errors: true
+  max_error_rate: 0.05  # Alert if > 5% parse errors
+
+# Candidate Set Configuration
+candidate_set:
+  total_size: 100      # 1 GT + 99 Negatives
+  gt_count: 1
+  negative_count: 99
+
+# vLLM Configuration (RunPod/Cloud)
+vllm:
+  enable_lora: true
+  max_lora_rank: 64
+  gpu_memory_utilization: 0.85  # 0.9 -> 0.85 for OOM prevention
+  tensor_parallel_size: 1
+  enable_prefix_caching: true   # 20-30% speedup for repeated prompts
+  dtype: bfloat16               # Qwen3 optimized dtype
+
+# Reproducibility
+random_seed: 42
+
+# Logging
+logging:
+  level: INFO
+  save_predictions: true
+  save_thinking_blocks: true
+  save_error_samples: true

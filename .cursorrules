@@ -1,0 +1,208 @@
+# KitREC Experimental_test - Cursor AI Rules
+
+## 프로젝트 개요
+KitREC (Knowledge-Instruction Transfer for Recommendation)은 Cross-Domain 추천 시스템 연구 프로젝트입니다.
+- **목표**: Books (Source) → Movies/Music (Target) 지식 전이를 통한 Cold-start 문제 해결
+- **Base Model**: Qwen3-14B (PEFT QLoRA Fine-tuning)
+- **추론 환경**: vLLM 기반, Nvidia 5090 (36GB VRAM)
+
+---
+
+## 핵심 코딩 규칙
+
+### 1. 데이터 처리 규칙
+
+#### Template Schema Difference (필수)
+```python
+# ✅ 올바른 프롬프트 추출 패턴
+prompt = sample["input"] if sample.get("input") else sample["instruction"]
+
+# ❌ 잘못된 패턴 (Training vs Val/Test 구조가 다름)
+prompt = sample["instruction"]  # Val/Test에서 실패
+```
+
+#### Ground Truth 파싱
+```python
+# ground_truth가 JSON string인 경우 처리
+gt = sample.get("ground_truth", {})
+if isinstance(gt, str):
+    gt = json.loads(gt)
+```
+
+### 2. Confidence Score 정규화 (필수)
+
+```python
+# KitREC 모델 출력: 1-10
+# Ground Truth Rating: 1-5
+# 정규화: confidence / 2
+
+# Baseline 모델 정규화: sigmoid * 9 + 1 → [1, 10]
+def normalize_confidence(raw_score: float) -> float:
+    sigmoid = 1 / (1 + np.exp(-raw_score))
+    return sigmoid * 9 + 1
+```
+
+### 3. Candidate Set 검증 (필수)
+
+```python
+# 모든 모델 동일 조건 적용
+assert len(candidates) == 100  # 1 GT + 99 Negatives
+assert gt_id in candidates     # GT 반드시 포함
+
+# 후보군 외 item_id 출력 시 → fail 처리 (rank = ∞)
+if predicted_id not in candidate_ids:
+    return float('inf')  # rank = 무한대
+```
+
+### 4. Device Mismatch 방지
+
+```python
+# ✅ 올바른 패턴
+model_device = next(self.parameters()).device
+tensor = tensor.to(model_device)
+
+# ❌ 잘못된 패턴
+tensor = tensor.to("cuda")  # 모델이 다른 device일 수 있음
+```
+
+### 5. Train/Test 데이터 분리 (Data Leakage 방지)
+
+```python
+# ✅ Training: kitrec-dualft_* 데이터셋 사용
+train_dataset = "Younggooo/kitrec-dualft_movies-seta"
+
+# ✅ Evaluation: kitrec-test-* 데이터셋 사용
+test_dataset = "Younggooo/kitrec-test-seta"
+
+# ❌ 금지: Test 데이터 분할하여 학습에 사용
+train_samples = test_data[:-1000]  # Data Leakage!
+```
+
+---
+
+## 프로젝트 구조
+
+```
+Experimental_test/
+├── src/
+│   ├── data/          # 데이터 로딩, 프롬프트 생성
+│   ├── inference/     # vLLM 추론, 출력 파싱
+│   ├── metrics/       # Hit@K, MRR, NDCG, MAE/RMSE, PPL
+│   └── models/        # KitREC, Base 모델 로더
+├── baselines/
+│   ├── base_evaluator.py  # 공통 평가 인프라
+│   ├── conet/         # CoNet (CIKM 2018)
+│   ├── dtcdr/         # DTCDR (CIKM 2019)
+│   └── llm4cdr/       # LLM4CDR (3-Stage Pipeline)
+├── scripts/           # 실행 스크립트
+├── configs/           # 설정 파일 (YAML)
+└── results/           # 평가 결과 저장
+```
+
+---
+
+## Research Questions (RQ)
+
+| RQ | 목적 | 비교 대상 | 핵심 메트릭 |
+|----|------|----------|------------|
+| RQ1 | Ablation Study (2×2) | KitREC-Full, Direct, Base-CoT, Base-Direct | Hit@10, NDCG@10 |
+| RQ2 | Baseline 비교 | CoNet, DTCDR, LLM4CDR | Hit@K, MRR, NDCG@K |
+| RQ3 | Cold-start 분석 | 1-core ~ 10-core User Type | Core Level별 성능 |
+| RQ4 | Explainability | KitREC만 (Baseline 제외) | MAE, RMSE, GPT Score |
+
+---
+
+## User Type Mapping
+
+| User Type | Core Level | Training Model | 특성 |
+|-----------|------------|----------------|------|
+| source_only_* | 1-core | SingleFT | 극한 Cold-start |
+| cold_start_2core_* | 2-core | DualFT | 심각한 Cold-start |
+| cold_start_3core_* | 3-core | DualFT | 중간 Cold-start |
+| cold_start_4core_* | 4-core | DualFT | 경미한 Cold-start |
+| overlapping_* | 5+-core | DualFT | Warm-start |
+
+---
+
+## 평가 메트릭
+
+### Ranking Metrics
+- **Hit@K**: Top-K에 GT 포함 여부 (K=1,5,10)
+- **MRR**: 1/rank 평균 (1위=1.0, 2위=0.5, ...)
+- **NDCG@K**: 로그 할인 기반 랭킹 품질
+
+### Explainability Metrics (KitREC만)
+- **MAE/RMSE**: Confidence vs GT Rating
+- **Perplexity**: Rationale 언어 품질
+- **GPT-4.1 Score**: Logic, Specificity, Cross-domain, Preference
+
+---
+
+## 통계적 유의성 검정
+
+```python
+from scipy import stats
+
+# Paired t-test + Cohen's d
+def paired_t_test(scores_a, scores_b):
+    t_stat, p_value = stats.ttest_rel(scores_a, scores_b)
+    diff = np.array(scores_a) - np.array(scores_b)
+    effect_size = np.mean(diff) / np.std(diff)
+    return {"p_value": p_value, "cohens_d": effect_size}
+
+# 다중 비교 보정 (Holm-Bonferroni)
+# Step-up enforcement 적용
+```
+
+| 표기 | 의미 |
+|------|------|
+| * | p < 0.05 |
+| ** | p < 0.01 |
+| *** | p < 0.001 |
+
+---
+
+## 참조 문서
+- `CLAUDE.md`: 프로젝트 상세 가이드
+- `detail_task_plan.md`: 작업 계획서
+- `IMPLEMENTATION_SUMMARY.md`: 구현 요약
+
+---
+
+## 주의사항
+
+### LLM4CDR 구현 차이점
+| 항목 | 원 논문 | KitREC 구현 |
+|------|---------|-------------|
+| Candidate Set | 3 GT + 20-30 Neg | 1 GT + 99 Neg |
+| Target History | 미사용 | 포함 |
+
+> 논문에 명시: "LLM4CDR was re-evaluated using KitREC protocol"
+
+### Movies Metadata 누락 (43.3%)
+- Group A: Metadata 있음 → KitREC 실제 성능
+- Group B: Unknown → 메타데이터 의존도 측정
+- 예상: Group A 성능 >> Group B 성능
+
+---
+
+## 명령어 예시
+
+```bash
+# KitREC 평가
+python scripts/run_kitrec_eval.py \
+    --model_name dualft_movies_seta \
+    --dataset Younggooo/kitrec-test-seta \
+    --output_dir results/kitrec
+
+# Baseline 학습/평가
+python scripts/run_baseline_eval.py \
+    --baseline conet \
+    --target_domain movies \
+    --candidate_set seta
+
+# Ablation Study
+python scripts/run_ablation_study.py \
+    --config configs/eval_config.yaml
+```
+
