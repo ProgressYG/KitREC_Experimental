@@ -56,3 +56,6 @@ logs/
 # Project Specific
 __MACOSX/
 .gemini/
+
+# YoYo AI version control directory
+.yoyo/

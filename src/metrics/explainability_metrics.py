@@ -56,16 +56,31 @@ class ExplainabilityMetrics:
 
         Returns:
             MAE value
+            
+        Note:
+            confidence_score = 0은 파싱 오류로 처리하여 통계에서 제외됨
+            (CLAUDE.md 참조: ⚠️ confidence_score = 0 은 파싱 오류로 처리)
         """
         if not predicted_confidences or not ground_truth_ratings:
             return 0.0
 
         errors = []
+        skipped = 0
         for conf, gt_rating in zip(predicted_confidences, ground_truth_ratings):
+            # confidence_score = 0은 파싱 오류로 처리하여 제외
+            if conf <= 0:
+                skipped += 1
+                continue
             normalized_conf = self.normalize_confidence(conf)
             errors.append(abs(normalized_conf - gt_rating))
 
-        return np.mean(errors)
+        if skipped > 0:
+            import logging
+            logging.getLogger(__name__).warning(
+                f"MAE: Skipped {skipped} samples with confidence_score <= 0 (parsing error)"
+            )
+
+        return np.mean(errors) if errors else 0.0
 
     def rmse(
         self,
@@ -81,16 +96,31 @@ class ExplainabilityMetrics:
 
         Returns:
             RMSE value
+            
+        Note:
+            confidence_score = 0은 파싱 오류로 처리하여 통계에서 제외됨
+            (CLAUDE.md 참조: ⚠️ confidence_score = 0 은 파싱 오류로 처리)
         """
         if not predicted_confidences or not ground_truth_ratings:
             return 0.0
 
         squared_errors = []
+        skipped = 0
         for conf, gt_rating in zip(predicted_confidences, ground_truth_ratings):
+            # confidence_score = 0은 파싱 오류로 처리하여 제외
+            if conf <= 0:
+                skipped += 1
+                continue
             normalized_conf = self.normalize_confidence(conf)
             squared_errors.append((normalized_conf - gt_rating) ** 2)
 
-        return np.sqrt(np.mean(squared_errors))
+        if skipped > 0:
+            import logging
+            logging.getLogger(__name__).warning(
+                f"RMSE: Skipped {skipped} samples with confidence_score <= 0 (parsing error)"
+            )
+
+        return np.sqrt(np.mean(squared_errors)) if squared_errors else 0.0
 
     def perplexity(
         self,
