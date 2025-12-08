@@ -6,20 +6,34 @@ base_model:
   name: "Qwen/Qwen3-14B"
   revision: "main"
 
+# Domain Status (Updated: 2025-12-08)
+# Music: Ready for evaluation
+# Movies: Pending (preprocessing + model training required)
+domain_status:
+  music:
+    ready: true
+    models_available: ["dualft_music_seta", "dualft_music_setb", "singleft_music_seta", "singleft_music_setb"]
+  movies:
+    ready: false
+    models_available: []  # To be added after training
+
 # KitREC Fine-tuned Models (LoRA Adapters)
-# Status: Music models ready, Movies models training
 kitrec_models:
-  # DualFT Models (Overlapping + Cold-start users)
-  dualft_movies_seta: "Younggooo/kitrec-dualft-movies-seta-model"
-  dualft_movies_setb: "Younggooo/kitrec-dualft-movies-setb-model"
+  # === MUSIC DOMAIN (Ready) ===
+  # DualFT Music Models (Overlapping + Cold-start users: 12,000 samples each)
   dualft_music_seta: "Younggooo/kitrec-dualft-music-seta-model"
   dualft_music_setb: "Younggooo/kitrec-dualft-music-setb-model"
-
-  # SingleFT Models (Source-only users)
-  singleft_movies_seta: "Younggooo/kitrec-singleft-movies-seta-model"
-  singleft_movies_setb: "Younggooo/kitrec-singleft-movies-setb-model"
-  singleft_music_seta: "Younggooo/kitrec-singleft-music-seta-model"
+  # SingleFT Music Models (Source-only users: 3,000 samples each)
+  singleft_music_seta: "Younggooo/kitrec-singleft-music-seta"  # Note: no -model suffix
   singleft_music_setb: "Younggooo/kitrec-singleft-music-setb-model"
+
+  # === MOVIES DOMAIN (Pending - Placeholder) ===
+  # DualFT Movies Models (will be added after training)
+  dualft_movies_seta: "Younggooo/kitrec-dualft-movies-seta-model"  # PLACEHOLDER
+  dualft_movies_setb: "Younggooo/kitrec-dualft-movies-setb-model"  # PLACEHOLDER
+  # SingleFT Movies Models (will be added after training)
+  singleft_movies_seta: "Younggooo/kitrec-singleft-movies-seta-model"  # PLACEHOLDER
+  singleft_movies_setb: "Younggooo/kitrec-singleft-movies-setb-model"  # PLACEHOLDER
 
 # KitREC-Direct Models (Option A: separate training without <think>)
 # Note: These need to be trained separately from KitREC-Full

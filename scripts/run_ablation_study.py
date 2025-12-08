@@ -15,11 +15,24 @@ import sys
 import json
 import random
 from datetime import datetime
+from pathlib import Path
 
 import numpy as np
 import torch
 
-sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+# Add project root to path
+PROJECT_ROOT = Path(__file__).parent.parent
+sys.path.insert(0, str(PROJECT_ROOT))
+
+# Load .env file automatically
+try:
+    from dotenv import load_dotenv
+    env_path = PROJECT_ROOT / ".env"
+    if env_path.exists():
+        load_dotenv(env_path)
+        print(f"[INFO] Loaded environment from {env_path}")
+except ImportError:
+    print("[WARN] python-dotenv not installed. Install with: pip install python-dotenv")
 
 
 def set_seed(seed: int = 42):
@@ -48,15 +61,43 @@ from src.utils.visualization import generate_ablation_table
 from tqdm import tqdm
 
 
+# Domain availability status (sync with KitRECModel.AVAILABLE_DOMAINS)
+AVAILABLE_DOMAINS = {
+    "music": True,   # Ready for evaluation
+    "movies": False  # Pending - models not yet trained
+}
+
+
 def parse_args():
-    parser = argparse.ArgumentParser(description="RQ1 Ablation Study")
+    parser = argparse.ArgumentParser(
+        description="RQ1 Ablation Study",
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        epilog="""
+Domain Status:
+  Music:  READY   - Can run ablation study
+  Movies: PENDING - Models not yet available
+
+Examples:
+  # Run ablation study for Music domain
+  python run_ablation_study.py --target_domain music
+
+  # Quick test with 100 samples
+  python run_ablation_study.py --target_domain music --max_samples 100
+        """
+    )
 
     parser.add_argument(
         "--target_domain",
         type=str,
         choices=["movies", "music"],
         required=True,
-        help="Target domain for evaluation"
+        help="Target domain for evaluation (currently only 'music' is available)"
+    )
+
+    parser.add_argument(
+        "--show_status",
+        action="store_true",
+        help="Show domain availability status and exit"
     )
 
     parser.add_argument(
@@ -151,8 +192,44 @@ def evaluate_model(
     return aggregated
 
 
+def show_domain_status():
+    """도메인 상태 출력"""
+    print("=" * 60)
+    print("Ablation Study - Domain Availability Status")
+    print("=" * 60)
+    for domain, available in AVAILABLE_DOMAINS.items():
+        status = "READY" if available else "PENDING"
+        print(f"  [{domain.upper()}] - {status}")
+    print("\nCurrently available: music")
+    print("Pending (models not trained): movies")
+    print("=" * 60)
+
+
+def validate_domain(domain: str):
+    """도메인 사용 가능 여부 검증"""
+    if not AVAILABLE_DOMAINS.get(domain, False):
+        print(f"\n{'='*60}")
+        print(f"ERROR: Domain '{domain}' is not yet available!")
+        print(f"{'='*60}")
+        print(f"\nThe {domain.upper()} domain models are still in training.")
+        print(f"\nCurrently available domains:")
+        for d, available in AVAILABLE_DOMAINS.items():
+            if available:
+                print(f"  - {d}")
+        print(f"\nPlease use --target_domain music instead.")
+        sys.exit(1)
+
+
 def main():
     args = parse_args()
+
+    # Show status and exit if requested
+    if args.show_status:
+        show_domain_status()
+        return
+
+    # Validate domain availability
+    validate_domain(args.target_domain)
 
     # Set random seed for reproducibility
     set_seed(args.seed)

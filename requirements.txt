@@ -40,6 +40,8 @@ statsmodels>=0.14.0  # Statistical tests (ANOVA, Friedman, etc.)
 
 tqdm>=4.65.0
 pyyaml>=6.0
+python-dotenv>=1.0.0  # .env file loading
+openai>=1.0.0  # OpenAI API for GPT-4.1-mini baseline experiments
 
 # =============================================================================
 # Optional: Visualization

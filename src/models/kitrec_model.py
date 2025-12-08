@@ -24,24 +24,37 @@ class KitRECModel:
     """KitREC 모델 래퍼"""
 
     # 모델 경로 매핑
+    # Domain Status: Music (Ready), Movies (Pending)
     MODEL_PATHS = {
-        # DualFT Models
-        "dualft_movies_seta": "Younggooo/kitrec-dualft-movies-seta-model",
-        "dualft_movies_setb": "Younggooo/kitrec-dualft-movies-setb-model",
+        # === MUSIC DOMAIN (Ready for Evaluation) ===
+        # DualFT Music Models (12,000 samples each)
         "dualft_music_seta": "Younggooo/kitrec-dualft-music-seta-model",
         "dualft_music_setb": "Younggooo/kitrec-dualft-music-setb-model",
-
-        # SingleFT Models
-        "singleft_movies_seta": "Younggooo/kitrec-singleft-movies-seta-model",
-        "singleft_movies_setb": "Younggooo/kitrec-singleft-movies-setb-model",
-        "singleft_music_seta": "Younggooo/kitrec-singleft-music-seta-model",
+        # SingleFT Music Models (3,000 samples each)
+        "singleft_music_seta": "Younggooo/kitrec-singleft-music-seta",  # Note: no -model suffix
         "singleft_music_setb": "Younggooo/kitrec-singleft-music-setb-model",
 
-        # Direct Models (Option A: 별도 학습)
-        "direct_dualft_movies_seta": "Younggooo/kitrec-direct-dualft-movies-seta-model",
-        "direct_dualft_movies_setb": "Younggooo/kitrec-direct-dualft-movies-setb-model",
+        # === MOVIES DOMAIN (Pending - Placeholder) ===
+        # These paths are placeholders; update after Movies model training
+        "dualft_movies_seta": "Younggooo/kitrec-dualft-movies-seta-model",  # PLACEHOLDER
+        "dualft_movies_setb": "Younggooo/kitrec-dualft-movies-setb-model",  # PLACEHOLDER
+        "singleft_movies_seta": "Younggooo/kitrec-singleft-movies-seta-model",  # PLACEHOLDER
+        "singleft_movies_setb": "Younggooo/kitrec-singleft-movies-setb-model",  # PLACEHOLDER
+
+        # === DIRECT MODELS (for RQ1 Ablation Study) ===
+        # Music Direct Models
         "direct_dualft_music_seta": "Younggooo/kitrec-direct-dualft-music-seta-model",
         "direct_dualft_music_setb": "Younggooo/kitrec-direct-dualft-music-setb-model",
+        # Movies Direct Models (Placeholder)
+        "direct_dualft_movies_seta": "Younggooo/kitrec-direct-dualft-movies-seta-model",  # PLACEHOLDER
+        "direct_dualft_movies_setb": "Younggooo/kitrec-direct-dualft-movies-setb-model",  # PLACEHOLDER
+    }
+
+    # Available models by domain (for validation)
+    AVAILABLE_DOMAINS = {
+        "music": ["dualft_music_seta", "dualft_music_setb",
+                  "singleft_music_seta", "singleft_music_setb"],
+        "movies": []  # To be populated after Movies model training
     }
 
     def __init__(
@@ -165,6 +178,63 @@ class KitRECModel:
     def list_available_models(cls) -> list:
         """사용 가능한 모델 목록 반환"""
         return list(cls.MODEL_PATHS.keys())
+
+    @classmethod
+    def list_available_models_by_domain(cls, domain: str) -> list:
+        """
+        특정 도메인의 사용 가능한 모델 목록 반환
+
+        Args:
+            domain: "music" or "movies"
+
+        Returns:
+            해당 도메인의 사용 가능한 모델 이름 리스트
+        """
+        domain = domain.lower()
+        if domain not in cls.AVAILABLE_DOMAINS:
+            raise ValueError(f"Unknown domain: {domain}. Available: {list(cls.AVAILABLE_DOMAINS.keys())}")
+        return cls.AVAILABLE_DOMAINS[domain]
+
+    @classmethod
+    def is_domain_available(cls, domain: str) -> bool:
+        """도메인 사용 가능 여부 확인"""
+        domain = domain.lower()
+        return domain in cls.AVAILABLE_DOMAINS and len(cls.AVAILABLE_DOMAINS[domain]) > 0
+
+    @classmethod
+    def validate_model_for_domain(cls, model_name: str, domain: str) -> bool:
+        """
+        모델이 해당 도메인에서 사용 가능한지 검증
+
+        Args:
+            model_name: 모델 이름
+            domain: 도메인 ("music" or "movies")
+
+        Returns:
+            사용 가능 여부
+
+        Raises:
+            ValueError: 도메인이 아직 준비되지 않은 경우
+        """
+        domain = domain.lower()
+        if not cls.is_domain_available(domain):
+            raise ValueError(
+                f"Domain '{domain}' is not yet available. "
+                f"Currently available domains: {[d for d, m in cls.AVAILABLE_DOMAINS.items() if len(m) > 0]}"
+            )
+        return model_name in cls.AVAILABLE_DOMAINS[domain]
+
+    @classmethod
+    def get_domain_status(cls) -> Dict[str, Any]:
+        """모든 도메인의 상태 정보 반환"""
+        return {
+            domain: {
+                "ready": len(models) > 0,
+                "models_count": len(models),
+                "models": models
+            }
+            for domain, models in cls.AVAILABLE_DOMAINS.items()
+        }
 
 
 def load_kitrec_model(model_name: str, hf_token: str = None) -> KitRECModel:

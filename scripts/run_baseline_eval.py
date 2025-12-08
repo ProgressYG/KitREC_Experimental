@@ -15,11 +15,24 @@ import sys
 import json
 import random
 from datetime import datetime
+from pathlib import Path
 
 import numpy as np
 import torch
 
-sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+# Add project root to path
+PROJECT_ROOT = Path(__file__).parent.parent
+sys.path.insert(0, str(PROJECT_ROOT))
+
+# Load .env file automatically
+try:
+    from dotenv import load_dotenv
+    env_path = PROJECT_ROOT / ".env"
+    if env_path.exists():
+        load_dotenv(env_path)
+        print(f"[INFO] Loaded environment from {env_path}")
+except ImportError:
+    print("[WARN] python-dotenv not installed. Install with: pip install python-dotenv")
 
 
 def set_seed(seed: int = 42):
@@ -103,8 +116,31 @@ def print_user_type_metrics(user_type_metrics, baseline_name):
                   f"{m.get('mrr', 0):.4f}")
 
 
+# Domain availability status (sync with KitRECModel.AVAILABLE_DOMAINS)
+AVAILABLE_DOMAINS = {
+    "music": True,   # Ready for evaluation
+    "movies": False  # Pending - models not yet trained
+}
+
+
 def parse_args():
-    parser = argparse.ArgumentParser(description="Baseline Model Evaluation")
+    parser = argparse.ArgumentParser(
+        description="Baseline Model Evaluation",
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        epilog="""
+Domain Status:
+  Music:  READY   - Can run baseline evaluation
+  Movies: PENDING - Models not yet available
+
+Examples:
+  # Evaluate CoNet on Music domain
+  python run_baseline_eval.py --baseline conet --target_domain music
+
+  # Evaluate with training
+  python run_baseline_eval.py --baseline dtcdr --target_domain music \\
+      --train_baseline --train_dataset Younggooo/kitrec-dualft_music-seta
+        """
+    )
 
     parser.add_argument(
         "--baseline",
@@ -119,7 +155,13 @@ def parse_args():
         type=str,
         choices=["movies", "music"],
         required=True,
-        help="Target domain"
+        help="Target domain (currently only 'music' is available)"
+    )
+
+    parser.add_argument(
+        "--show_status",
+        action="store_true",
+        help="Show domain availability status and exit"
     )
 
     parser.add_argument(
@@ -156,6 +198,22 @@ def parse_args():
         type=str,
         default=None,
         help="HuggingFace token"
+    )
+
+    # LLM Backend selection (for llm4cdr, vanilla baselines)
+    parser.add_argument(
+        "--llm_backend",
+        type=str,
+        choices=["qwen", "gpt4-mini"],
+        default="qwen",
+        help="LLM backend for LLM4CDR/Vanilla: 'qwen' (Qwen3-14B via vLLM) or 'gpt4-mini' (GPT-4.1-mini via OpenAI API)"
+    )
+
+    parser.add_argument(
+        "--openai_api_key",
+        type=str,
+        default=None,
+        help="OpenAI API key (for gpt4-mini backend, or set OPENAI_API_KEY env)"
     )
 
     # CoNet/DTCDR specific
@@ -348,19 +406,56 @@ def evaluate_dtcdr(args, test_data):
     return metrics, evaluator, converted_test_samples, converter, test_samples
 
 
+def create_llm_inference_engine(args):
+    """
+    LLM 추론 엔진 생성 (Qwen or GPT-4.1-mini)
+
+    Args:
+        args: 명령줄 인자 (llm_backend, hf_token, openai_api_key)
+
+    Returns:
+        추론 엔진 인스턴스
+    """
+    if args.llm_backend == "qwen":
+        print(f"  LLM Backend: Qwen3-14B (vLLM)")
+        inference_engine = VLLMInference(
+            model_name="Qwen/Qwen3-14B",
+            hf_token=args.hf_token,
+            enable_lora=False,
+        )
+        inference_engine.initialize()
+        return inference_engine
+
+    elif args.llm_backend == "gpt4-mini":
+        print(f"  LLM Backend: GPT-4.1-mini (OpenAI API)")
+        from src.inference.openai_inference import OpenAIInference
+
+        api_key = args.openai_api_key or os.environ.get("OPENAI_API_KEY")
+        if not api_key:
+            raise ValueError(
+                "OpenAI API key required for gpt4-mini backend.\n"
+                "Set OPENAI_API_KEY in .env or pass --openai_api_key"
+            )
+
+        inference_engine = OpenAIInference(
+            model_name="gpt-4.1-mini",
+            api_key=api_key,
+        )
+        inference_engine.initialize()
+        return inference_engine
+
+    else:
+        raise ValueError(f"Unknown LLM backend: {args.llm_backend}")
+
+
 def evaluate_llm4cdr(args, test_data):
     """LLM4CDR 평가 (3-stage pipeline)"""
     from baselines.llm4cdr import LLM4CDREvaluator
 
     print("Initializing LLM4CDR (3-stage)...")
 
-    # Initialize inference engine
-    inference_engine = VLLMInference(
-        model_name="Qwen/Qwen3-14B",
-        hf_token=args.hf_token,
-        enable_lora=False,
-    )
-    inference_engine.initialize()
+    # Initialize inference engine based on backend selection
+    inference_engine = create_llm_inference_engine(args)
 
     evaluator = LLM4CDREvaluator(
         inference_engine=inference_engine,
@@ -378,6 +473,11 @@ def evaluate_llm4cdr(args, test_data):
         target_domain=args.target_domain.capitalize()
     )
 
+    # Print LLM statistics if available
+    if hasattr(inference_engine, 'get_statistics'):
+        stats = inference_engine.get_statistics()
+        print(f"\n  LLM Statistics: {stats}")
+
     # LLM-based: return None for converter (no embedding conversion)
     return metrics, evaluator, samples, None, samples
 
@@ -388,12 +488,8 @@ def evaluate_vanilla(args, test_data):
 
     print("Initializing Vanilla Zero-shot...")
 
-    inference_engine = VLLMInference(
-        model_name="Qwen/Qwen3-14B",
-        hf_token=args.hf_token,
-        enable_lora=False,
-    )
-    inference_engine.initialize()
+    # Initialize inference engine based on backend selection
+    inference_engine = create_llm_inference_engine(args)
 
     evaluator = LLM4CDREvaluator(
         inference_engine=inference_engine,
@@ -411,27 +507,77 @@ def evaluate_vanilla(args, test_data):
         target_domain=args.target_domain.capitalize()
     )
 
+    # Print LLM statistics if available
+    if hasattr(inference_engine, 'get_statistics'):
+        stats = inference_engine.get_statistics()
+        print(f"\n  LLM Statistics: {stats}")
+
     # LLM-based: return None for converter (no embedding conversion)
     return metrics, evaluator, samples, None, samples
 
 
+def show_domain_status():
+    """도메인 상태 출력"""
+    print("=" * 60)
+    print("Baseline Evaluation - Domain Availability Status")
+    print("=" * 60)
+    for domain, available in AVAILABLE_DOMAINS.items():
+        status = "READY" if available else "PENDING"
+        print(f"  [{domain.upper()}] - {status}")
+    print("\nCurrently available: music")
+    print("Pending (models not trained): movies")
+    print("=" * 60)
+
+
+def validate_domain(domain: str):
+    """도메인 사용 가능 여부 검증"""
+    if not AVAILABLE_DOMAINS.get(domain, False):
+        print(f"\n{'='*60}")
+        print(f"ERROR: Domain '{domain}' is not yet available!")
+        print(f"{'='*60}")
+        print(f"\nThe {domain.upper()} domain models are still in training.")
+        print(f"\nCurrently available domains:")
+        for d, available in AVAILABLE_DOMAINS.items():
+            if available:
+                print(f"  - {d}")
+        print(f"\nPlease use --target_domain music instead.")
+        sys.exit(1)
+
+
 def main():
     args = parse_args()
+
+    # Show status and exit if requested
+    if args.show_status:
+        show_domain_status()
+        return
+
+    # Validate domain availability
+    validate_domain(args.target_domain)
 
     # Set random seed for reproducibility
     set_seed(args.seed)
     print(f"Random seed set to: {args.seed}")
 
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-    output_dir = os.path.join(
-        args.output_dir, args.baseline, args.target_domain, timestamp
-    )
+    # Include LLM backend in output path for LLM-based baselines
+    if args.baseline in ["llm4cdr", "vanilla"]:
+        output_dir = os.path.join(
+            args.output_dir, args.baseline, args.llm_backend, args.target_domain, timestamp
+        )
+    else:
+        output_dir = os.path.join(
+            args.output_dir, args.baseline, args.target_domain, timestamp
+        )
     os.makedirs(output_dir, exist_ok=True)
 
     print("=" * 60)
     print(f"Baseline Evaluation: {args.baseline.upper()}")
     print(f"Target Domain: {args.target_domain}")
     print(f"Candidate Set: {args.candidate_set}")
+    if args.baseline in ["llm4cdr", "vanilla"]:
+        backend_info = "Qwen3-14B (vLLM)" if args.llm_backend == "qwen" else "GPT-4.1-mini (OpenAI)"
+        print(f"LLM Backend: {backend_info}")
     print("=" * 60)
 
     # Load test data

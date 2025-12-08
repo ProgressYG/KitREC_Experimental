@@ -307,9 +307,9 @@ class DTCDRTrainer:
         Security Note: weights_only=False is required for optimizer state.
         Only load checkpoints from trusted sources.
         """
-        # Path validation - prevent directory traversal
-        # Use explicit parentheses for clarity (and binds tighter than or)
-        if (".." in path) or (path.startswith("/") and not path.startswith("/Volumes")):
+        # Path validation - prevent directory traversal attacks
+        # Only block ".." patterns, allow any absolute path (RunPod uses /workspace/)
+        if ".." in path:
             raise ValueError(f"Suspicious checkpoint path detected: {path}")
 
         # weights_only=False needed for optimizer_state_dict (contains non-tensor objects)

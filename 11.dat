@@ -1,0 +1,37 @@
+곧 runpod에 서버를 개설해서 실험을 시작할 예정입니다.
+
+한가지 추가로 수정할 부분이 있습니다.
+우선 domain 중 music 만 먼저 실험할 예정입니다.  movies 는 music 실험을 진행하고 추가로 문제되는 전처리 하고 모델 구축한 후  진행할 예정입니다.
+music domain 에 구축된 모델들의 repo 주소 입니다.
+Younggooo/kitrec-singleft-music-setb-model
+Younggooo/kitrec-singleft-music-seta
+Younggooo/kitrec-dualft-music-setb-model
+Younggooo/kitrec-dualft-music-seta-model
+
+현재 프로젝트 폴더의 코드에 대해 우선 위 4개 모델의 실험이 진행 될 수 있게 수정하였고 추후 영화파트로 확장될 수 있는 점을 고려한 코드로 수정했습니다 .
+그리고 베이스라인의 모델들 구축 및 실험도 우선 music 파트만 실험이 진행되고 수정했는데요.
+이 모든 수정내용과 현재 상태로 서버에 폴더를 옮겨 실험을 진행해도 문제가 없을지 전문가적인 입장에서 검증 및 확인해 주세요 
+그리고 베이스라인 모델 중 llm 2개 모델인 llm4cdr, nir 모델에 사용되는 llm 모델이 무엇이며. 이 모델이 논문에 기초한 것인지. 이 모델을 사용하기 위한 api 키 설정 및
+실험 코드에 문제가 없는지도 use agents 전문가를 이용해 확인해 주세요
+
+Qwen3-14B (KitREC와 동일), gpt4.1-mini 를 사용해 실험합니다.
+
+
+
+  # 도메인 상태 확인
+  python scripts/run_kitrec_eval.py --show_status
+
+  # 단일 모델 평가
+  python scripts/run_kitrec_eval.py --model_name dualft_music_seta
+
+  # 빠른 테스트 (100 샘플)
+  python scripts/run_kitrec_eval.py --model_name dualft_music_seta --max_samples 100
+
+  # 전체 Music 도메인 평가
+  python scripts/run_kitrec_eval.py --target_domain music --run_all
+
+  Movies 확장 시
+  docs/DOMAIN_EXTENSION_GUIDE.md 파일의 가이드를 따라:
+  1. configs/model_paths.yaml에서 Movies 모델 경로 업데이트
+  2. src/models/kitrec_model.py에서 AVAILABLE_DOMAINS 업데이트
+  3. --show_status로 검증 후 실험 진행

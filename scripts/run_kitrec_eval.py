@@ -2,11 +2,13 @@
 """
 KitREC 모델 평가 실행 스크립트
 
-8개 모델 × 30,000 샘플 평가
-- DualFT-Movies (Set A/B)
-- DualFT-Music (Set A/B)
-- SingleFT-Movies (Set A/B)
-- SingleFT-Music (Set A/B)
+Domain Status (2025-12-08):
+- Music: Ready (4 models available)
+- Movies: Pending (preprocessing + model training required)
+
+Available Models:
+- Music: dualft_music_seta, dualft_music_setb, singleft_music_seta, singleft_music_setb
+- Movies: (to be added after training)
 """
 
 import argparse
@@ -14,12 +16,25 @@ import os
 import sys
 import random
 from datetime import datetime
+from pathlib import Path
 
 import numpy as np
 import torch
 
 # Add project root to path
-sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+PROJECT_ROOT = Path(__file__).parent.parent
+sys.path.insert(0, str(PROJECT_ROOT))
+
+# Load .env file automatically
+try:
+    from dotenv import load_dotenv
+    env_path = PROJECT_ROOT / ".env"
+    if env_path.exists():
+        load_dotenv(env_path)
+        print(f"[INFO] Loaded environment from {env_path}")
+except ImportError:
+    print("[WARN] python-dotenv not installed. Install with: pip install python-dotenv")
+    print("[WARN] Falling back to system environment variables")
 
 
 def set_seed(seed: int = 42):
@@ -49,19 +64,61 @@ from src.utils.logger import EvaluationLogger
 
 
 def parse_args():
-    parser = argparse.ArgumentParser(description="KitREC Model Evaluation")
+    parser = argparse.ArgumentParser(
+        description="KitREC Model Evaluation",
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        epilog="""
+Domain Status:
+  Music:  READY   - dualft_music_seta, dualft_music_setb,
+                    singleft_music_seta, singleft_music_setb
+  Movies: PENDING - Models will be added after training
 
+Examples:
+  # Evaluate DualFT Music Set A
+  python run_kitrec_eval.py --model_name dualft_music_seta
+
+  # Evaluate all Music models
+  python run_kitrec_eval.py --target_domain music --run_all
+
+  # Quick test with 100 samples
+  python run_kitrec_eval.py --model_name singleft_music_seta --max_samples 100
+        """
+    )
+
+    # Music models first (available), Movies models second (pending)
     parser.add_argument(
         "--model_name",
         type=str,
-        required=True,
+        default=None,
         choices=[
-            "dualft_movies_seta", "dualft_movies_setb",
+            # === MUSIC (Ready) ===
             "dualft_music_seta", "dualft_music_setb",
-            "singleft_movies_seta", "singleft_movies_setb",
             "singleft_music_seta", "singleft_music_setb",
+            # === MOVIES (Pending) ===
+            "dualft_movies_seta", "dualft_movies_setb",
+            "singleft_movies_seta", "singleft_movies_setb",
         ],
-        help="KitREC model name"
+        help="KitREC model name (Music models currently available)"
+    )
+
+    parser.add_argument(
+        "--target_domain",
+        type=str,
+        choices=["music", "movies"],
+        default=None,
+        help="Target domain for evaluation (use with --run_all)"
+    )
+
+    parser.add_argument(
+        "--run_all",
+        action="store_true",
+        help="Run evaluation for all models in target domain"
+    )
+
+    parser.add_argument(
+        "--show_status",
+        action="store_true",
+        help="Show domain and model availability status"
     )
 
     parser.add_argument(
@@ -122,8 +179,56 @@ def parse_args():
     return parser.parse_args()
 
 
-def main():
-    args = parse_args()
+def show_domain_status():
+    """도메인 및 모델 상태 출력"""
+    print("=" * 60)
+    print("KitREC Model Availability Status")
+    print("=" * 60)
+    status = KitRECModel.get_domain_status()
+    for domain, info in status.items():
+        ready_str = "READY" if info["ready"] else "PENDING"
+        print(f"\n[{domain.upper()}] - {ready_str}")
+        if info["ready"]:
+            print(f"  Available models ({info['models_count']}):")
+            for model in info["models"]:
+                repo = KitRECModel.MODEL_PATHS.get(model, "N/A")
+                print(f"    - {model}: {repo}")
+        else:
+            print("  No models available yet (training in progress)")
+    print("\n" + "=" * 60)
+
+
+def validate_domain_and_model(model_name: str):
+    """모델과 도메인의 유효성 검증"""
+    # Extract domain from model name
+    if "music" in model_name:
+        domain = "music"
+    elif "movies" in model_name:
+        domain = "movies"
+    else:
+        raise ValueError(f"Cannot determine domain from model name: {model_name}")
+
+    # Check domain availability
+    if not KitRECModel.is_domain_available(domain):
+        print(f"\n{'='*60}")
+        print(f"ERROR: Domain '{domain}' is not yet available!")
+        print(f"{'='*60}")
+        print(f"\nModel '{model_name}' cannot be evaluated because")
+        print(f"the {domain.upper()} domain models are still in training.")
+        print(f"\nCurrently available domains:")
+        for d, models in KitRECModel.AVAILABLE_DOMAINS.items():
+            if len(models) > 0:
+                print(f"  - {d}: {models}")
+        print(f"\nPlease use --show_status to see available models.")
+        sys.exit(1)
+
+    return domain
+
+
+def run_single_evaluation(args, model_name: str):
+    """단일 모델 평가 실행"""
+    # Validate model
+    domain = validate_domain_and_model(model_name)
 
     # Set random seed for reproducibility
     set_seed(args.seed)
@@ -131,17 +236,18 @@ def main():
 
     # Setup output directory
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-    output_dir = os.path.join(args.output_dir, args.model_name, timestamp)
+    output_dir = os.path.join(args.output_dir, model_name, timestamp)
     os.makedirs(output_dir, exist_ok=True)
 
     # Initialize logger
     logger = EvaluationLogger(
-        name=f"kitrec.{args.model_name}",
+        name=f"kitrec.{model_name}",
         log_dir=os.path.join(output_dir, "logs")
     )
 
     print(f"=" * 60)
-    print(f"KitREC Evaluation: {args.model_name}")
+    print(f"KitREC Evaluation: {model_name}")
+    print(f"Domain: {domain.upper()}")
     print(f"Dataset: {args.dataset}")
     print(f"Output: {output_dir}")
     print(f"=" * 60)
@@ -155,11 +261,11 @@ def main():
         test_data = test_data.select(range(min(args.max_samples, len(test_data))))
 
     print(f"  Loaded {len(test_data)} samples")
-    logger.log_start(args.model_name, args.dataset, len(test_data))
+    logger.log_start(model_name, args.dataset, len(test_data))
 
     # Load model
     print("\n[2/5] Loading KitREC model...")
-    model = KitRECModel.load(args.model_name, hf_token=args.hf_token)
+    model = KitRECModel.load(model_name, hf_token=args.hf_token)
     print(f"  Model: {model.config.lora_path}")
 
     # Initialize inference engine
@@ -237,7 +343,7 @@ def main():
 
     # Metrics summary
     save_json({
-        "model_name": args.model_name,
+        "model_name": model_name,
         "dataset": args.dataset,
         "total_samples": len(results),
         "aggregated_metrics": aggregated,
@@ -272,6 +378,62 @@ def main():
         batch_inference.get_timing_statistics().get("total_time_seconds", 0),
         error_stats.get("parse_failure_rate", 0)
     )
+
+    return aggregated
+
+
+def main():
+    args = parse_args()
+
+    # Show status and exit if requested
+    if args.show_status:
+        show_domain_status()
+        return
+
+    # Determine models to evaluate
+    if args.run_all and args.target_domain:
+        # Validate domain availability
+        if not KitRECModel.is_domain_available(args.target_domain):
+            print(f"\nERROR: Domain '{args.target_domain}' is not yet available!")
+            show_domain_status()
+            sys.exit(1)
+
+        models_to_evaluate = KitRECModel.list_available_models_by_domain(args.target_domain)
+        print(f"\n{'='*60}")
+        print(f"Running evaluation for all {args.target_domain.upper()} models")
+        print(f"Models: {models_to_evaluate}")
+        print(f"{'='*60}")
+
+        all_results = {}
+        for model_name in models_to_evaluate:
+            print(f"\n{'='*60}")
+            print(f"Evaluating: {model_name}")
+            print(f"{'='*60}")
+            result = run_single_evaluation(args, model_name)
+            all_results[model_name] = result
+
+        # Summary of all models
+        print(f"\n{'='*60}")
+        print(f"ALL {args.target_domain.upper()} MODELS EVALUATION SUMMARY")
+        print(f"{'='*60}")
+        for model_name, metrics in all_results.items():
+            print(f"\n{model_name}:")
+            print(f"  Hit@10: {metrics.get('hit@10', 0):.4f}")
+            print(f"  NDCG@10: {metrics.get('ndcg@10', 0):.4f}")
+            print(f"  MRR: {metrics.get('mrr', 0):.4f}")
+
+    elif args.model_name:
+        # Single model evaluation
+        run_single_evaluation(args, args.model_name)
+
+    else:
+        # No model specified
+        print("\nERROR: Please specify either --model_name or --target_domain with --run_all")
+        print("\nUse --show_status to see available models")
+        print("\nExamples:")
+        print("  python run_kitrec_eval.py --model_name dualft_music_seta")
+        print("  python run_kitrec_eval.py --target_domain music --run_all")
+        sys.exit(1)
 
 
 if __name__ == "__main__":
