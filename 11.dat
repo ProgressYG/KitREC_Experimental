@@ -11,10 +11,11 @@ Younggooo/kitrec-dualft-music-seta-model
 현재 프로젝트 폴더의 코드에 대해 우선 위 4개 모델의 실험이 진행 될 수 있게 수정하였고 추후 영화파트로 확장될 수 있는 점을 고려한 코드로 수정했습니다 .
 그리고 베이스라인의 모델들 구축 및 실험도 우선 music 파트만 실험이 진행되고 수정했는데요.
 이 모든 수정내용과 현재 상태로 서버에 폴더를 옮겨 실험을 진행해도 문제가 없을지 전문가적인 입장에서 검증 및 확인해 주세요 
-그리고 베이스라인 모델 중 llm 2개 모델인 llm4cdr, nir 모델에 사용되는 llm 모델이 무엇이며. 이 모델이 논문에 기초한 것인지. 이 모델을 사용하기 위한 api 키 설정 및
-실험 코드에 문제가 없는지도 use agents 전문가를 이용해 확인해 주세요
+그리고 베이스라인 모델 중 llm 2개 모델인 llm4cdr, nir 모델에 사용되는 llm 모델이 무엇이며. 이 모델이 논문에 기초한 것인지. 이 모델을 사용하기 위한 api 키 설정 및 반영이 된 것인지 체크해주세요
+베이스라인 모델 중 llm 2개 모델의 foundation model을 Qwen3-14B (KitREC와 동일), gpt4.1-mini 를 사용하려고 합니다.
 
-Qwen3-14B (KitREC와 동일), gpt4.1-mini 를 사용해 실험합니다.
+@RUNPOD_QUICKSTART.md 의 내용과 위 내용을 모두 전문가적인 입장에서 코드 / 문서 / config 등을 면밀히 검증해 주세요 
+
 
 
 
@@ -35,3 +36,30 @@ Qwen3-14B (KitREC와 동일), gpt4.1-mini 를 사용해 실험합니다.
   1. configs/model_paths.yaml에서 Movies 모델 경로 업데이트
   2. src/models/kitrec_model.py에서 AVAILABLE_DOMAINS 업데이트
   3. --show_status로 검증 후 실험 진행
+
+
+
+
+   tar -czvf kitrec_experimental.tar.gz \
+      --exclude='.git' \
+      --exclude='__pycache__' \
+      --exclude='*.pyc' \
+      --exclude='*.pyo' \
+      --exclude='.DS_Store' \
+      --exclude='.cursor' \
+      --exclude='.vscode' \
+      --exclude='.yoyo' \
+      --exclude='logs/*' \
+      --exclude='results/*' \
+      --exclude='checkpoints' \
+      --exclude='*.pt' \
+      --exclude='*.pth' \
+      --exclude='11.dat' \
+      -C /Volumes/ygmac_external/Projects_e/KitREC \
+      Experimental_test
+
+
+
+
+        
+      /Volumes/ygmac_external/Projects_e/KitREC/Experimental_test/kitrec_experimental.tar.gz
